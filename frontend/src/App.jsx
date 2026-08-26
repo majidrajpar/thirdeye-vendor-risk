@@ -9,6 +9,9 @@ function App() {
   const [error, setError] = useState('');
   const [analysis, setAnalysis] = useState(null);
   const [confirmedMappings, setConfirmedMappings] = useState({});
+  const [threshold, setThreshold] = useState('');
+  const [results, setResults] = useState(null);
+  const [detecting, setDetecting] = useState(false);
 
   const handleFileSelect = useCallback((e) => {
     const selectedFiles = Array.from(e.target.files);
@@ -118,10 +121,48 @@ function App() {
     }));
   };
 
-  const handleConfirmMappings = () => {
-    // TODO: Send confirmed mappings to backend
-    console.log('Confirmed mappings:', confirmedMappings);
-    alert('Mappings confirmed! Ready for detection. (Day 3 implementation)');
+  const handleConfirmMappings = async () => {
+    if (!threshold || isNaN(parseFloat(threshold)) || parseFloat(threshold) <= 0) {
+      setError('Please enter a valid payment threshold > 0');
+      return;
+    }
+    
+    setDetecting(true);
+    setError('');
+    
+    try {
+      // Build files array from analysis (need paths)
+      const files = analysis.map(a => ({
+        originalName: a.filename,
+        path: a.path || ''  // Need to include path in analysis response
+      }));
+      
+      const response = await fetch('http://localhost:3001/api/detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          files,
+          mappings: confirmedMappings,
+          threshold: parseFloat(threshold)
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Detection failed');
+      }
+
+      const data = await response.json();
+      setResults(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDetecting(false);
+    }
+  };
+
+  const handleBackToMapping = () => {
+    setResults(null);
+    setError('');
   };
 
   const getConfidenceColor = (confidence) => {
@@ -149,7 +190,6 @@ function App() {
 
       <main className="main">
         {!analysis ? (
-          <!-- Upload Phase -->
           <div className="upload-section">
             <h2>Upload Vendor Data</h2>
             <p className="instructions">
@@ -215,8 +255,70 @@ function App() {
               {uploading ? 'Analyzing...' : 'Start Analysis'}
             </button>
           </div>
+        ) : results ? (
+          <div className="results-section">
+            <h2>Detection Results</h2>
+
+            <div className="summary-cards">
+              <div className="summary-card">
+                <span className="summary-number">{results.summary?.vendorsAnalyzed || 0}</span>
+                <span className="summary-label">Vendors Analyzed</span>
+              </div>
+              <div className="summary-card">
+                <span className="summary-number">{results.summary?.totalRecords || 0}</span>
+                <span className="summary-label">Records Scanned</span>
+              </div>
+              <div className="summary-card findings">
+                <span className="summary-number">{results.summary?.findingsCount || 0}</span>
+                <span className="summary-label">Findings</span>
+              </div>
+            </div>
+
+            {results.findings && results.findings.length > 0 ? (
+              <div className="findings-list">
+                {results.findings.map((finding, idx) => (
+                  <div key={idx} className={`finding-card severity-${finding.severity}`}>
+                    <div className="finding-header">
+                      <span className={`finding-badge ${finding.type}`}>
+                        {finding.type === 'shell_company' ? 'Shell Co' : finding.type === 'sod_violation' ? 'SOD' : 'Velocity'}
+                      </span>
+                      <span className={`severity-badge ${finding.severity}`}>{finding.severity}</span>
+                    </div>
+                    <p className="finding-message">{finding.message}</p>
+                    {finding.vendors && (
+                      <p className="finding-vendors">
+                        <strong>Vendors:</strong> {finding.vendors.join(', ')}
+                      </p>
+                    )}
+                    {finding.user && (
+                      <p className="finding-user">
+                        <strong>User:</strong> {finding.user}
+                      </p>
+                    )}
+                    {finding.amount && (
+                      <p className="finding-amount">
+                        <strong>Amount:</strong> ${finding.amount.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="no-findings">
+                <p>No findings detected. Your vendor data looks clean!</p>
+              </div>
+            )}
+
+            <div className="mapping-actions">
+              <button className="secondary-btn" onClick={handleBackToMapping}>
+                ← Back to Mappings
+              </button>
+              <button className="secondary-btn" onClick={() => { setResults(null); setAnalysis(null); setFiles([]); }}>
+                New Scan
+              </button>
+            </div>
+          </div>
         ) : (
-          <!-- Column Mapping Phase -->
           <div className="mapping-section">
             <h2>Confirm Column Mappings</h2>
             <p className="instructions">
@@ -297,12 +399,26 @@ function App() {
               </div>
             ))}
 
+            <div className="threshold-input">
+              <label htmlFor="threshold">Payment Threshold ($)</label>
+              <input
+                id="threshold"
+                type="number"
+                min="1"
+                step="any"
+                placeholder="e.g. 10000"
+                value={threshold}
+                onChange={(e) => setThreshold(e.target.value)}
+              />
+              <p className="hint">Payments above this amount will be flagged</p>
+            </div>
+
             <div className="mapping-actions">
               <button className="secondary-btn" onClick={() => setAnalysis(null)}>
                 ← Back to Upload
               </button>
-              <button className="upload-btn" onClick={handleConfirmMappings}>
-                Confirm Mappings & Run Detection →
+              <button className="upload-btn" onClick={handleConfirmMappings} disabled={detecting}>
+                {detecting ? 'Running Detection...' : 'Confirm Mappings & Run Detection →'}
               </button>
             </div>
           </div>

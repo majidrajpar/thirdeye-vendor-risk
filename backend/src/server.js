@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const csv = require('csv-parser');
 const xlsx = require('xlsx');
+const { spawn } = require('child_process');
 
 const app = express();
 const PORT = 3001;
@@ -222,6 +223,7 @@ app.post('/api/analyze', async (req, res) => {
       
       analysis.push({
         filename: file.originalName,
+        path: file.path,
         type: parsed.type,
         rowCount: parsed.rowCount,
         headers: parsed.headers,
@@ -272,6 +274,71 @@ function generateSuggestions(detected, capabilities) {
   
   return suggestions;
 }
+
+// Run detection endpoint
+app.post('/api/detect', async (req, res) => {
+  try {
+    const { files, mappings, threshold } = req.body;
+    
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: 'No files to analyze' });
+    }
+
+    // Build file configs for Python engine
+    const fileConfigs = files.map((file, idx) => ({
+      path: file.path,
+      mappings: mappings[idx] || {}
+    }));
+
+    const engineInput = JSON.stringify({
+      files: fileConfigs,
+      threshold: threshold || 0
+    });
+
+    // Path to Python executable in venv
+    const isWin = process.platform === 'win32';
+    const pythonPath = isWin
+      ? path.join(__dirname, '../../engine/venv/Scripts/python.exe')
+      : path.join(__dirname, '../../engine/venv/bin/python');
+    const enginePath = path.join(__dirname, '../../engine/detect.py');
+
+    // Spawn Python process
+    const python = spawn(pythonPath, [enginePath]);
+    
+    let stdout = '';
+    let stderr = '';
+
+    python.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
+
+    python.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    python.on('close', (code) => {
+      if (code !== 0) {
+        console.error('Engine stderr:', stderr);
+        return res.status(500).json({ error: 'Detection engine failed', details: stderr });
+      }
+
+      try {
+        const result = JSON.parse(stdout);
+        res.json(result);
+      } catch (e) {
+        console.error('Failed to parse engine output:', stdout);
+        res.status(500).json({ error: 'Invalid engine output' });
+      }
+    });
+
+    python.stdin.write(engineInput);
+    python.stdin.end();
+
+  } catch (error) {
+    console.error('Detection error:', error);
+    res.status(500).json({ error: 'Detection failed' });
+  }
+});
 
 // Health check
 app.get('/api/health', (req, res) => {

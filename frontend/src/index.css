@@ -495,3 +495,179 @@ body {
   background: var(--primary);
   color: white;
 }
+
+/* Threshold Input */
+.threshold-input {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: var(--bg);
+  border-radius: 8px;
+}
+
+.threshold-input label {
+  display: block;
+  font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 0.5rem;
+}
+
+.threshold-input input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+.threshold-input .hint {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
+/* Results Section */
+.results-section {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.results-section h2 {
+  color: var(--primary);
+  margin-bottom: 1.5rem;
+}
+
+/* Summary Cards */
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.summary-card {
+  background: var(--bg);
+  padding: 1.5rem;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.summary-card.findings {
+  background: #fff3cd;
+}
+
+.summary-number {
+  display: block;
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.summary-label {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+/* Findings */
+.findings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.finding-card {
+  padding: 1.25rem;
+  border-radius: 8px;
+  border-left: 4px solid var(--border);
+  background: var(--bg);
+}
+
+.finding-card.severity-critical {
+  border-left-color: #dc3545;
+  background: #fff5f5;
+}
+
+.finding-card.severity-high {
+  border-left-color: #fd7e14;
+  background: #fff8f0;
+}
+
+.finding-card.severity-medium {
+  border-left-color: var(--accent);
+  background: #fffbf5;
+}
+
+.finding-header {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.finding-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.finding-badge.shell_company {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.finding-badge.sod_violation {
+  background: #fce4ec;
+  color: #c2185b;
+}
+
+.finding-badge.velocity_anomaly {
+  background: #f3e5f5;
+  color: #7b1fa2;
+}
+
+.severity-badge {
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.severity-badge.critical {
+  background: #dc3545;
+  color: white;
+}
+
+.severity-badge.high {
+  background: #fd7e14;
+  color: white;
+}
+
+.severity-badge.medium {
+  background: var(--accent);
+  color: white;
+}
+
+.finding-message {
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.finding-vendors,
+.finding-user,
+.finding-amount {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.no-findings {
+  text-align: center;
+  padding: 3rem;
+  color: var(--success);
+  font-size: 1.1rem;
+}
