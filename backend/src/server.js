@@ -3,6 +3,8 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const csv = require('csv-parser');
+const xlsx = require('xlsx');
 
 const app = express();
 const PORT = 3001;
@@ -40,8 +42,124 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({ 
   storage,
   fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  limits: { fileSize: 10 * 1024 * 1024 }
 });
+
+// Column mapping suggestions
+const COLUMN_PATTERNS = {
+  vendor_id: ['vendor_id', 'vendorid', 'vendor_code', 'vendorcode', 'vendor_no', 'vendorno', 'vendor_number', 'supplier_id', 'supplierid', 'supplier_code', 'id', 'code'],
+  vendor_name: ['vendor_name', 'vendorname', 'supplier_name', 'suppliername', 'name', 'company', 'company_name', 'vendor', 'supplier'],
+  bank_account: ['bank_account', 'bankaccount', 'account_number', 'account_no', 'acct_no', 'bank_acct', 'iban', 'account'],
+  address: ['address', 'street', 'street_address', 'location', 'office_address', 'registered_address'],
+  email: ['email', 'email_address', 'contact_email', 'e_mail', 'mail'],
+  phone: ['phone', 'phone_number', 'telephone', 'contact_phone', 'mobile', 'tel'],
+  created_by: ['created_by', 'createdby', 'creator', 'created_user', 'user_created', 'entered_by', 'created'],
+  created_date: ['created_date', 'createddate', 'date_created', 'creation_date', 'created'],
+  payment_amount: ['payment_amount', 'paymentamount', 'amount', 'paid_amount', 'payment', 'value', 'total', 'amount_paid'],
+  payment_date: ['payment_date', 'paymentdate', 'paid_date', 'date_paid', 'transaction_date', 'tx_date', 'date'],
+  approved_by: ['approved_by', 'approvedby', 'approver', 'approved_user', 'approval_by', 'authorised_by', 'authorized_by']
+};
+
+function detectColumns(headers) {
+  const detected = {};
+  const unmatched = [];
+  
+  // Convert headers to lowercase for matching
+  const lowerHeaders = headers.map(h => h.toLowerCase().trim().replace(/[_\s-]+/g, '_'));
+  
+  for (const [field, patterns] of Object.entries(COLUMN_PATTERNS)) {
+    let matched = false;
+    
+    for (let i = 0; i < lowerHeaders.length; i++) {
+      const header = lowerHeaders[i];
+      
+      // Exact match
+      if (patterns.includes(header)) {
+        detected[field] = {
+          detected: headers[i],
+          confidence: 'high',
+          matchType: 'exact'
+        };
+        matched = true;
+        break;
+      }
+      
+      // Partial match (contains)
+      for (const pattern of patterns) {
+        if (header.includes(pattern) || pattern.includes(header)) {
+          detected[field] = {
+            detected: headers[i],
+            confidence: 'medium',
+            matchType: 'partial'
+          };
+          matched = true;
+          break;
+        }
+      }
+      
+      if (matched) break;
+    }
+    
+    if (!matched) {
+      detected[field] = {
+        detected: null,
+        confidence: 'none',
+        matchType: 'none'
+      };
+    }
+  }
+  
+  // Find truly unmatched columns
+  const matchedHeaders = new Set(Object.values(detected).map(d => d.detected).filter(Boolean));
+  for (const header of headers) {
+    if (!matchedHeaders.has(header)) {
+      unmatched.push(header);
+    }
+  }
+  
+  return { detected, unmatched };
+}
+
+function parseCSV(filepath) {
+  return new Promise((resolve, reject) => {
+    const headers = [];
+    let rowCount = 0;
+    
+    fs.createReadStream(filepath)
+      .pipe(csv())
+      .on('headers', (h) => {
+        headers.push(...h);
+      })
+      .on('data', () => {
+        rowCount++;
+        if (rowCount > 5) return; // Only read first 5 rows for preview
+      })
+      .on('end', () => {
+        resolve({ headers, rowCount, type: 'csv' });
+      })
+      .on('error', reject);
+  });
+}
+
+function parseExcel(filepath) {
+  const workbook = xlsx.readFile(filepath);
+  const sheetName = workbook.SheetNames[0];
+  const worksheet = workbook.Sheets[sheetName];
+  
+  // Get headers from first row
+  const range = xlsx.utils.decode_range(worksheet['!ref']);
+  const headers = [];
+  
+  for (let C = range.s.c; C <= range.e.c; ++C) {
+    const cell = worksheet[xlsx.utils.encode_cell({ r: range.s.r, c: C })];
+    headers.push(cell ? cell.v : '');
+  }
+  
+  // Count rows
+  const rowCount = range.e.r;
+  
+  return { headers, rowCount, type: 'excel', sheetName };
+}
 
 // Upload endpoint
 app.post('/api/upload', upload.array('files', 5), async (req, res) => {
@@ -57,8 +175,6 @@ app.post('/api/upload', upload.array('files', 5), async (req, res) => {
       path: file.path
     }));
 
-    // TODO: Analyze columns and return schema info
-    // For now, return success with file list
     res.json({
       success: true,
       message: `${files.length} file(s) uploaded successfully`,
@@ -71,6 +187,91 @@ app.post('/api/upload', upload.array('files', 5), async (req, res) => {
     res.status(500).json({ error: 'Upload failed' });
   }
 });
+
+// Analyze columns endpoint
+app.post('/api/analyze', async (req, res) => {
+  try {
+    const { files } = req.body;
+    
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: 'No files to analyze' });
+    }
+
+    const analysis = [];
+    
+    for (const file of files) {
+      const filepath = file.path;
+      const ext = path.extname(file.originalName).toLowerCase();
+      
+      let parsed;
+      if (ext === '.csv') {
+        parsed = await parseCSV(filepath);
+      } else {
+        parsed = parseExcel(filepath);
+      }
+      
+      const { detected, unmatched } = detectColumns(parsed.headers);
+      
+      // Determine what detections are possible
+      const capabilities = {
+        networkAnalysis: !!(detected.vendor_name?.detected || detected.vendor_id?.detected),
+        sodDetection: !!(detected.created_by?.detected && detected.approved_by?.detected),
+        velocityAnalysis: !!(detected.payment_amount?.detected && detected.payment_date?.detected),
+        fullNetwork: !!detected.bank_account?.detected
+      };
+      
+      analysis.push({
+        filename: file.originalName,
+        type: parsed.type,
+        rowCount: parsed.rowCount,
+        headers: parsed.headers,
+        detectedColumns: detected,
+        unmatchedColumns: unmatched,
+        capabilities,
+        suggestions: generateSuggestions(detected, capabilities)
+      });
+    }
+    
+    res.json({
+      success: true,
+      analysis
+    });
+    
+  } catch (error) {
+    console.error('Analysis error:', error);
+    res.status(500).json({ error: 'Analysis failed' });
+  }
+});
+
+function generateSuggestions(detected, capabilities) {
+  const suggestions = [];
+  
+  if (!capabilities.fullNetwork) {
+    suggestions.push({
+      type: 'missing_data',
+      message: 'Bank account data not detected. Shell company detection will be limited to name/address matching.',
+      recommendation: 'Include bank_account column for stronger network analysis'
+    });
+  }
+  
+  if (!capabilities.sodDetection) {
+    suggestions.push({
+      type: 'missing_data',
+      message: 'SOD detection requires both vendor creator and payment approver data.',
+      recommendation: 'Ensure files contain created_by and approved_by columns'
+    });
+  }
+  
+  if (!capabilities.velocityAnalysis) {
+    suggestions.push({
+      type: 'missing_data',
+      message: 'Payment velocity analysis requires amount and date columns.',
+      recommendation: 'Include payment_amount and payment_date columns'
+    });
+  }
+  
+  return suggestions;
+}
 
 // Health check
 app.get('/api/health', (req, res) => {
