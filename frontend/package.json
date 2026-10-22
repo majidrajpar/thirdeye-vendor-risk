@@ -2,6 +2,7 @@
   "name": "thirdeye-frontend",
   "private": true,
   "version": "1.0.0",
+  "author": "Majid Mumtaz",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -2,6 +2,7 @@
   "name": "thirdeye-backend",
   "version": "1.0.0",
   "description": "ThirdEye Vendor Risk Scanner API",
+  "author": "Majid Mumtaz",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
