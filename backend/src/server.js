@@ -295,11 +295,12 @@ app.post('/api/detect', async (req, res) => {
       threshold: threshold || 0
     });
 
-    // Path to Python executable in venv
+    // Path to Python executable (checks PYTHON_PATH env var first, falling back to venv)
     const isWin = process.platform === 'win32';
-    const pythonPath = isWin
+    const defaultPythonPath = isWin
       ? path.join(__dirname, '../../engine/venv/Scripts/python.exe')
       : path.join(__dirname, '../../engine/venv/bin/python');
+    const pythonPath = process.env.PYTHON_PATH || defaultPythonPath;
     const enginePath = path.join(__dirname, '../../engine/detect.py');
 
     // Spawn Python process
